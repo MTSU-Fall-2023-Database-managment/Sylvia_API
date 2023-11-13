@@ -1,5 +1,6 @@
 ﻿using System.Data;
 using System.Globalization;
+using System.Linq;
 using System.Net;
 using CsvHelper;
 using Dapper;
@@ -26,11 +27,11 @@ namespace SYLVIA
                                   "~: Close application\n\n");
                 
                 Console.Write("Selection: ");
-                var todo = Console.ReadLine();
+                var todo = Console.ReadKey();
                 
-                switch(todo)
+                switch(todo.Key)
                 {
-                    case "1":
+                    case ConsoleKey.NumPad1 or ConsoleKey.D1:
                         Console.Clear();
                         result = AlphaVantage();
 
@@ -38,7 +39,7 @@ namespace SYLVIA
                             return;
                         break;
 
-                    case "2":
+                    case ConsoleKey.NumPad2 or ConsoleKey.D2:
                         Console.Clear();
                         result = Analysis();
 
@@ -100,11 +101,11 @@ namespace SYLVIA
                                   "~: Close application\n\n");
 
                 Console.Write("Selection: ");
-                var todo = Console.ReadLine();
+                var todo = Console.ReadKey();
 
-                switch(todo)
+                switch(todo.Key)
                 {
-                    case "1":
+                    case ConsoleKey.NumPad1 or ConsoleKey.D1:
                         Console.Clear();
                         result = CallAVAPI();
 
@@ -113,12 +114,12 @@ namespace SYLVIA
                         else
                             return 0;
 
-                    case "2":
+                    case ConsoleKey.NumPad2 or ConsoleKey.D2:
                         Console.Clear();
                         HelpAlphaVantage();
                         break;
 
-                    case "3":
+                    case ConsoleKey.NumPad3 or ConsoleKey.D3:
                         Console.Clear();
                         return 0;
 
@@ -167,11 +168,11 @@ namespace SYLVIA
                                   "~: Close application\n\n");
 
                 Console.Write("Selection: ");
-                var todo = Console.ReadLine();
+                var todo = Console.ReadKey();
 
-                switch(todo)
+                switch(todo.Key)
                 {
-                    case "1":
+                    case ConsoleKey.NumPad1 or ConsoleKey.D1:
                         Console.Clear();
                         result = AVFunctionCall("TIME_SERIES_INTRADAY", "rawintraday");
 
@@ -181,7 +182,7 @@ namespace SYLVIA
                             Console.WriteLine("Unable to pull INTRADAY data from AlphaVantage\n");
                         break;
 
-                    case "2":
+                    case ConsoleKey.NumPad2 or ConsoleKey.D2:
                         Console.Clear();
                         result = AVFunctionCall("TIME_SERIES_DAILY", "rawdaily");
 
@@ -191,7 +192,7 @@ namespace SYLVIA
                             Console.WriteLine("Unable to pull DAILY data from AlphaVantage\n");
                         break;
 
-                    case "3":
+                    case ConsoleKey.NumPad3 or ConsoleKey.D3:
                         Console.Clear();
                         result = AVFunctionCall("TIME_SERIES_WEEKLY", "rawweekly");
 
@@ -201,7 +202,7 @@ namespace SYLVIA
                             Console.WriteLine("Unable to pull WEEKLY data from AlphaVantage\n");
                         break;
 
-                    case "4":
+                    case ConsoleKey.NumPad4 or ConsoleKey.D4:
                         Console.Clear();
                         result = AVFunctionCall("TIME_SERIES_MONTHLY", "rawmonthly");
 
@@ -211,12 +212,12 @@ namespace SYLVIA
                             Console.WriteLine("Unable to pull MONTHLY data from AlphaVantage\n");
                         break;
 
-                    case "5":
+                    case ConsoleKey.NumPad5 or ConsoleKey.D5:
                         Console.Clear();
                         HelpCallAVAPI();
                         break;
 
-                    case "6":
+                    case ConsoleKey.NumPad6 or ConsoleKey.D6:
                         Console.Clear();
                         return 0;
 
@@ -257,7 +258,17 @@ namespace SYLVIA
             Console.WriteLine("Please Enter Symbol below, if enter more than please separate by a comma");
             Console.Write("Symbol(s):");
 
-            var symbolString = Console.ReadLine();
+            string symbolString;
+
+            do
+            {
+                symbolString = Console.ReadLine();
+
+                if (symbolString == null)
+                {
+                    Console.WriteLine("Please enter one or more Symbols before continuing\n");
+                }
+            } while(symbolString == null);
 
             List<string> symbols = symbolString.Split(',').ToList();
             symbols = symbols.Select(x => x.Trim()).ToList();
@@ -268,11 +279,15 @@ namespace SYLVIA
                 {
                     string URL = CreateURL(function, symbol);
 
-                    string file = CreateCSV(URL, symbol);
+                    string data = GetCSV(URL, symbol);
 
-                    InsertData(file, symbol, table);
+                    if (data.Contains("Thank you for using Alpha Vantage! Our standard API rate limit is 25 requests per day."))
+                    {
+                        Console.WriteLine("Thank you for using Alpha Vantage! Our standard API rate limit is 25 requests per day.");
+                        return 1;
+                    }
 
-                    DeleteCSV(file);
+                    InsertData(data, symbol, table);
 
                     PressToCont();
                 }
@@ -302,25 +317,20 @@ namespace SYLVIA
             return URL;
         }
 
-        static private string CreateCSV(string URL, string symbol)
+        static private string GetCSV(string URL, string symbol)
         {
-            string fileName = symbol + "-" + DateTime.Now.ToString("MM-dd-yyyy");
-
             WebClient webClient = new();
 
             string data = webClient.DownloadString(URL);
 
-            File.WriteAllText($@"C:\Users\{Environment.UserName}\5560\{fileName}.csv", data);
-            Console.WriteLine($"{fileName}.csv created\n");
-
-            return fileName;
+            return data;
         }
 
-        static private void InsertData(string fileName, string symbol, string table)
+        static private void InsertData(string data, string symbol, string table)
         {
-            List<RawStockData> stockList = new List<RawStockData>();
+            List<RawStockData> stockList = new();
 
-            using(StreamReader reader = new StreamReader($@"C:\Users\{Environment.UserName}\5560\{fileName}.csv"))
+            using(StringReader reader = new StringReader(data))
 
             using(CsvReader csv = new CsvReader(reader, CultureInfo.InvariantCulture))
             {
@@ -333,11 +343,11 @@ namespace SYLVIA
                     {
                         Symbol = symbol,
                         TimeStamp = Convert.ToDateTime(DateTime.Parse(csv.GetField<string>("timestamp")).ToString("MM-dd-yyyy")),
-                        Open = csv.GetField<double>("open"),
-                        High = csv.GetField<double>("high"),
-                        Low = csv.GetField<double>("low"),
-                        Close = csv.GetField<double>("close"),
-                        Volume = csv.GetField<int>("volume")
+                        Open = csv.GetField<decimal>("open"),
+                        High = csv.GetField<decimal>("high"),
+                        Low = csv.GetField<decimal>("low"),
+                        Close = csv.GetField<decimal>("close"),
+                        Volume = csv.GetField<ulong>("volume")
                     };
 
                     stockList.Add(stockData);
@@ -357,76 +367,9 @@ namespace SYLVIA
             Console.WriteLine($"Finished {symbol} insert: {count} rows inserted\n");
         }
 
-        static private void DeleteCSV(string fileName)
-        {
-            if (File.Exists($@"C:\Users\{Environment.UserName}\5560\{fileName}.csv"))
-            {
-                File.Delete($@"C:\Users\{Environment.UserName}\5560\{fileName}.csv");
-                Console.WriteLine($"{fileName}.csv deleted\n");
-            }
-        }
-
-        //static private void Test()
-        //{
-        //    string queryURL = $"https://www.alphavantage.co/query?function={function}&symbol={symbol}&outputsize={outputsize}&datatype={datatype}&apikey={apiKey}";
-        //    string fileName = symbol + "-" + DateTime.Now.ToString("MM-dd-yyyy");
-
-        //    WebClient webClient = new();
-
-        //    string data = webClient.DownloadString(queryURL);
-
-        //    File.WriteAllText($@"C:\Users\{Environment.UserName}\5560\{fileName}.csv", data);
-        //    Console.WriteLine($"{fileName}.csv created\n");
-
-        //    List<RawStockData> stockList = new List<RawStockData>();
-
-        //    // Read in CSV File
-        //    using(StreamReader reader = new StreamReader($@"C:\Users\{Environment.UserName}\5560\{fileName}.csv"))
-
-        //    using(CsvReader csv = new CsvReader(reader, CultureInfo.InvariantCulture))
-        //    {
-        //        csv.Read();
-        //        csv.ReadHeader();
-
-        //        while(csv.Read())
-        //        {
-        //            RawStockData stockData = new RawStockData
-        //            {
-        //                Symbol = symbol,
-        //                TimeStamp = Convert.ToDateTime(DateTime.Parse(csv.GetField<string>("timestamp")).ToString("MM-dd-yyyy")),
-        //                Open = csv.GetField<double>("open"),
-        //                High = csv.GetField<double>("high"),
-        //                Low = csv.GetField<double>("low"),
-        //                Close = csv.GetField<double>("close"),
-        //                Volume = csv.GetField<int>("volume")
-        //            };
-
-        //            stockList.Add(stockData);
-        //        }
-        //    }
-
-        //    int count = 0;
-
-        //    Console.WriteLine($"Begining {symbol} insert\n");
-
-        //    foreach(var stock in stockList)
-        //    {
-        //        InsertRawData(table, stock);
-        //        count++;
-        //    }
-
-        //    Console.WriteLine($"Finished {symbol} insert: {count} rows inserted\n");
-
-        //    if(File.Exists($@"C:\Users\{Environment.UserName}\5560\{fileName}.csv"))
-        //    {
-        //        File.Delete($@"C:\Users\{Environment.UserName}\5560\{fileName}.csv");
-        //        Console.WriteLine($"{fileName}.csv deleted\n");
-        //    }
-        //}
-
         static private IDbConnection CreateConn()
         {
-            return new MySqlConnection("Server=127.0.0.1;Database=sylvia;Uid=root;Pwd=myRootToSQL");
+            return new MySqlConnection("Server=xxx;Database=xxx;Uid=xxx;Pwd=xxx");
         }
 
         static public void InsertRawData(string table, RawStockData data)
@@ -460,7 +403,364 @@ namespace SYLVIA
 
         static private int Analysis()
         {
+            int result;
+            bool run = true;
+
+            while(run)
+            {
+                Console.WriteLine("Analyze collected data:\n" +
+                                  "-----------------------\n" +
+                                  "1: List of Companies\n" +
+                                  "2: Highest stock price\n" +
+                                  "3: Lowest stock price\n" +
+                                  "4: Information on Analysis\n" +
+                                  "5: Main menu\n" +
+                                  "~: Close application\n\n");
+
+                Console.Write("Selection: ");
+                var todo = Console.ReadKey();
+
+                switch(todo.Key)
+                {
+                    case ConsoleKey.NumPad1 or ConsoleKey.D1:
+                        Console.Clear();
+                        result = SelectTable(1);
+
+                        if(result == 1)
+                            return 1;
+                        else
+                            return 0;
+                    
+                    case ConsoleKey.NumPad2 or ConsoleKey.D2:
+                        Console.Clear();
+                        result = SelectTable(2);
+
+                        if(result == 1)
+                            return 1;
+                        else
+                            return 0;
+                    
+                    case ConsoleKey.NumPad3 or ConsoleKey.D3:
+                        Console.Clear();
+                        result = SelectTable(3);
+
+                        if(result == 1)
+                            return 1;
+                        else
+                            return 0;
+                    
+                    case ConsoleKey.NumPad4 or ConsoleKey.D4:
+                        Console.Clear();
+                        HelpAnalysis();
+                        break;
+
+                    case ConsoleKey.NumPad5 or ConsoleKey.D5:
+                        Console.Clear();
+                        return 0;
+
+                    default:
+                        return 1;
+                }
+            }
+
             return 1;
+        }
+
+        static private void HelpAnalysis()
+        {
+            Console.WriteLine("================================================================================================\n" +
+                              "                           MORE INFORMATION ABOUT ANALYSIS\n" +
+                              "================================================================================================\n\n" +
+                              "Functions:\n" +
+                              "        List of Companies: Returns a list of distinct company symbols in the given table\n" +
+                              "      Highest stock price: Returns a list of companies with the highest stock price in the given table\n" +
+                              "       Lowest stock price: Returns a list of caompanies with the lowest stock price in the given table\n" +
+                              "Press any key to continue...");
+            Console.ReadKey();
+            Console.Clear();
+        }
+
+        static private int SelectTable(int selection)
+        {
+            int result;
+            bool run = true;
+
+            while(run)
+            {
+                Console.WriteLine("Select table for analysis:\n" +
+                                  "--------------------------\n" +
+                                  "1: INTRADAY\n" +
+                                  "2: DAILY\n" +
+                                  "3: WEEKLY\n" +
+                                  "4: MONTHLY\n" +
+                                  "5: Main menu\n" +
+                                  "~: Close application\n\n");
+
+                Console.Write("Selection: ");
+                var todo = Console.ReadKey();
+
+                switch(todo.Key)
+                {
+                    case ConsoleKey.NumPad1 or ConsoleKey.D1:
+                        Console.Clear();
+
+                        if (selection == 1)
+                        {
+                            result = GetCompanies("rawintraday");
+                        }
+                        else if (selection == 2)
+                        {
+                            result = GetHighest("rawintraday");
+                        }
+                        else if (selection == 3)
+                        {
+                            result = GetLowest("rawintraday");
+                        }
+                        else
+                        {
+                            Console.WriteLine("Something went wrong please try again");
+                            return 0;
+                        }
+                        
+                        if(result == 0)
+                            Console.WriteLine("Successfully pulled INTRADAY data from AplhaVantage!\n");
+                        else
+                            Console.WriteLine("Unable to pull INTRADAY data from AlphaVantage\n");
+                        break;
+
+                    case ConsoleKey.NumPad2 or ConsoleKey.D2:
+                        Console.Clear();
+
+                        if(selection == 1)
+                        {
+                            result = GetCompanies("rawdaily");
+                        }
+                        else if(selection == 2)
+                        {
+                            result = GetHighest("rawdaily");
+                        }
+                        else if(selection == 3)
+                        {
+                            result = GetLowest("rawdaily");
+                        }
+                        else
+                        {
+                            Console.WriteLine("Something went wrong please try again");
+                            return 0;
+                        }
+
+                        if(result == 0)
+                            Console.WriteLine("Successfully pulled DAILY data from AplhaVantage!\n");
+                        else
+                            Console.WriteLine("Unable to pull DAILY data from AlphaVantage\n");
+                        break;
+
+                    case ConsoleKey.NumPad3 or ConsoleKey.D3:
+                        Console.Clear();
+
+                        if(selection == 1)
+                        {
+                            result = GetCompanies("rawweekly");
+                        }
+                        else if(selection == 2)
+                        {
+                            result = GetHighest("rawweekly");
+                        }
+                        else if(selection == 3)
+                        {
+                            result = GetLowest("rawweekly");
+                        }
+                        else
+                        {
+                            Console.WriteLine("Something went wrong please try again");
+                            return 0;
+                        }
+
+                        if(result == 0)
+                            Console.WriteLine("Successfully pulled WEEKLY data from AplhaVantage!\n");
+                        else
+                            Console.WriteLine("Unable to pull WEEKLY data from AlphaVantage\n");
+                        break;
+
+                    case ConsoleKey.NumPad4 or ConsoleKey.D4:
+                        Console.Clear();
+
+                        if(selection == 1)
+                        {
+                            result = GetCompanies("rawmonthly");
+                        }
+                        else if(selection == 2)
+                        {
+                            result = GetHighest("rawmonthly");
+                        }
+                        else if(selection == 3)
+                        {
+                            result = GetLowest("rawmonthly");
+                        }
+                        else
+                        {
+                            Console.WriteLine("Something went wrong please try again");
+                            return 0;
+                        }
+
+                        if(result == 0)
+                            Console.WriteLine("Successfully pulled MONTHLY data from AplhaVantage!\n");
+                        else
+                            Console.WriteLine("Unable to pull MONTHLY data from AlphaVantage\n");
+                        break;
+
+                    case ConsoleKey.NumPad5 or ConsoleKey.D5:
+                        Console.Clear();
+                        return 0;
+
+                    default:
+                        return 1;
+                }
+            }
+
+            return 1;
+        }
+
+        static private int GetCompanies(string table)
+        {
+            using var conn = CreateConn();
+
+            try
+            {
+                var query = @$"SELECT DISTINCT Symbol FROM {table} ORDER BY Symbol";
+
+                conn.Open();
+
+                var results = conn.ExecuteReader(query);
+
+                var resultList = new List<OrderedStockData>();
+
+                while (results.Read())
+                {
+                    resultList.Add(
+                        new OrderedStockData
+                        {
+                            Symbol = (string)results["symbol"]
+                        });
+                }
+
+                PrintResults(resultList, "Companies", table);
+
+                return 0;
+            }
+            catch
+            {
+                return 1;
+            }
+        }
+
+        static private int GetHighest(string table)
+        {
+            using var conn = CreateConn();
+
+            try
+            {
+                var query = @$"SELECT * FROM {table} WHERE high = (SELECT max(high) FROM {table})";
+
+                conn.Open();
+
+                var results = conn.ExecuteReader(query);
+
+                var resultList = new List<OrderedStockData>();
+
+                while(results.Read())
+                {
+                    resultList.Add(
+                        new OrderedStockData
+                        {
+                            Id = (int)results["id"],
+                            Symbol = (string)results["symbol"],
+                            TimeStamp = (DateTime)results["timestamp"],
+                            Open = (decimal)results["open"],
+                            High = (decimal)results["high"],
+                            Low = (decimal)results["low"],
+                            Close = (decimal)results["close"],
+                            Volume = (ulong)results["volume"]
+                        });
+                }
+
+                PrintResults(resultList, "Highest Stock Price", table);
+
+                return 0;
+            }
+            catch
+            {
+                return 1;
+            }
+        }
+
+        static private int GetLowest(string table)
+        {
+            using var conn = CreateConn();
+
+            try
+            {
+                var query = @$"SELECT * FROM {table} WHERE low = (SELECT min(low) FROM {table})";
+
+                conn.Open();
+
+                var results = conn.ExecuteReader(query);
+
+                var resultList = new List<OrderedStockData>();
+
+                while(results.Read())
+                {
+                    resultList.Add(
+                        new OrderedStockData
+                        {
+                            Id = (int)results["id"],
+                            Symbol = (string)results["symbol"],
+                            TimeStamp = (DateTime)results["timestamp"],
+                            Open = (decimal)results["open"],
+                            High = (decimal)results["high"],
+                            Low = (decimal)results["low"],
+                            Close = (decimal)results["close"],
+                            Volume = (ulong)results["volume"]
+                        });
+                }
+
+                PrintResults(resultList, "Lowest Stock Price", table);
+
+                return 0;
+            }
+            catch
+            {
+                return 1;
+            }
+        }
+
+        static private void PrintResults(List<OrderedStockData> results, string type, string table)
+        {
+            string header = "================================================================================================\n" +
+                           $"                   LIST OF RESULTS FOR {type.ToUpper()} IN {table.ToUpper()}\n" +
+                            "================================================================================================\n\n";
+            
+            string body = $"{type} in {table}\n";
+            int count = 1;
+            
+            if (type == "Companies")
+            {
+                foreach (var res in results)
+                {
+                    body += $"{count}: {res.Symbol}\n";
+                    count++;
+                }
+            }
+            else
+            {
+                foreach(var res in results)
+                {
+                    body += $"ID: {res.Id}\n\t   Symbol: {res.Symbol}\n\tTimeStamp: {res.TimeStamp}\n\t     Open: {res.Open}\n\t     High: {res.High}\n\t      Low: {res.Low}\n\t    Close: {res.Close}\n\t   Volume: {res.Volume}\n\n";
+                }
+            }
+
+            Console.WriteLine(header + body);
+            PressToCont();
         }
     }
 }
