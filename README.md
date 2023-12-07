@@ -12,7 +12,7 @@ To build the API open the `Sylvia_API.SLN` file in Visual Studio, ensure the Cre
 
 ## Building the UI
 
-To build the UI open the Sylvia_UI folder in Visual Studio Code, Open a terminal, and run 'node .\index.js'
+To build the UI open the Sylvia_UI repo and follow that README.
 
 <hr>
 
